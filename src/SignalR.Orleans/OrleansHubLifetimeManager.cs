@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Diagnostics.CodeAnalysis;
+using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Protocol;
 using Orleans.Streams;
@@ -15,6 +16,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
     private IClusterClient? _clusterClient;
     private readonly SemaphoreSlim _streamSetupLock = new(1);
     private readonly HubConnectionStore _connections = new();
+    private readonly ClientResultsManager _clientResultsManager = new();
 
     private IStreamProvider? _streamProvider;
     private IAsyncStream<ClientMessage> _serverStream = default!;
@@ -265,6 +267,69 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
 
         var client = _clusterClient.GetClientGrain(_hubName, connectionId);
         return client.Send(hubMessage);
+    }
+
+    public override async Task<T> InvokeConnectionAsync<T>(string connectionId, string methodName, object?[] args,
+        CancellationToken cancellationToken)
+    {
+        // validate
+        if (string.IsNullOrWhiteSpace(connectionId)) throw new ArgumentNullException(nameof(connectionId));
+        if (string.IsNullOrWhiteSpace(methodName)) throw new ArgumentNullException(nameof(methodName));
+        
+        // try to get the connection from this silo connection store
+        var connection = _connections[connectionId];
+        
+        // Generate cluster-unique identifier for the invocation.
+        // ID needs to be unique for each invocation and across servers, we generate a GUID every time, that should provide enough uniqueness guarantees.
+        var invocationId = Guid.NewGuid().ToString();
+
+        using var _ = CancellationTokenUtils.CreateLinkedToken(cancellationToken,
+            connection?.ConnectionAborted ?? CancellationToken.None, out var linkedToken);
+        var task = _clientResultsManager.AddInvocation<T>(connectionId, invocationId, linkedToken);
+
+        try
+        {
+            var message = new InvocationMessage(invocationId, methodName, args);
+            if (connection == null)
+            {
+                await SendExternal(connectionId, message);
+            }
+            else
+            {
+                await SendLocal(connection, message);
+            }
+        }
+        catch
+        {
+            _clientResultsManager.RemoveInvocation(invocationId);
+            throw;
+        }
+
+        try
+        {
+            return await task;
+        }
+        catch
+        {
+            // ConnectionAborted will trigger a generic "Canceled" exception from the task, let's convert it into a more specific message.
+            if (connection?.ConnectionAborted.IsCancellationRequested == true)
+            {
+                throw new IOException($"Connection '{connectionId}' disconnected.");
+            }
+
+            throw;
+        }
+    }
+
+    public override Task SetConnectionResultAsync(string connectionId, CompletionMessage result)
+    {
+        _clientResultsManager.TryCompleteResult(connectionId, result);
+        return Task.CompletedTask;
+    }
+
+    public override bool TryGetReturnType(string invocationId, [NotNullWhen(true)] out Type? type)
+    {
+        return _clientResultsManager.TryGetType(invocationId, out type);
     }
 
     public void Dispose()
