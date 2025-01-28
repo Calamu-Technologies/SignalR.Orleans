@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Protocol;
 using Orleans.Streams;
+using SignalR.Orleans.Core;
 
 namespace SignalR.Orleans;
 
