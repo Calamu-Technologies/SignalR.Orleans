@@ -112,7 +112,14 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
 
         try
         {
-            if (_clusterClient is null) return;
+            if (_clusterClient is null)
+            {
+                _logger.LogError("Invalid clusterClient");
+                return;
+            }
+
+            _logger.LogDebug("Handle connection {connectionId} on hub {hubName} (serverId: {serverId})",
+                connection.ConnectionId, _hubName, _serverId);
 
             _connections.Add(connection);
 
@@ -122,7 +129,8 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
             if (connection!.User!.Identity!.IsAuthenticated)
             {
                 var user = _clusterClient.GetUserGrain(_hubName, connection.UserIdentifier!);
-                await user.Add(connection.ConnectionId);
+                if (user is not null)
+                    await user.Add(connection.ConnectionId);
             }
         }
         catch (Exception ex)
@@ -139,7 +147,11 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
     {
         try
         {
-            if (_clusterClient is null) return;
+            if (_clusterClient is null) 
+            {
+                _logger.LogError("Invalid clusterClient");
+                return; 
+            }
 
             _logger.LogDebug("Handle disconnection {connectionId} on hub {hubName} (serverId: {serverId})",
                 connection.ConnectionId, _hubName, _serverId);
