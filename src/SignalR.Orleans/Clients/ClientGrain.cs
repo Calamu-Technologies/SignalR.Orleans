@@ -54,6 +54,8 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
             var serverDisconnectedStream = _streamProvider.GetServerDisconnectionStream(_clientState.State.ServerId);
             var _serverDisconnectedSubscription = (await serverDisconnectedStream.GetAllSubscriptionHandles())[0];
             await _serverDisconnectedSubscription.ResumeAsync((serverId, _) => OnDisconnect("server-disconnected"));
+
+            _logger.LogDebug("ResumeAsync {serverId}", _clientState.State.ServerId);
         }
     }
 
@@ -61,6 +63,8 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
     {
         var serverDisconnectedStream = _streamProvider.GetServerDisconnectionStream(serverId);
         _serverDisconnectedSubscription = await serverDisconnectedStream.SubscribeAsync(_ => OnDisconnect("server-disconnected"));
+
+        _logger.LogDebug("OnConnect {serverId}", serverId);
 
         _clientState.State.ServerId = serverId;
         await _clientState.WriteStateAsync();
@@ -89,7 +93,7 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
     {
         if (_serverId != default)
         {
-            _logger.LogDebug("Sending message on {hubName}.{message.Target} to connection {connectionId}",
+            _logger.LogDebug("Sending message on stream to {hubName}.{target} to connection {connectionId}",
                 _hubName, message.Target, _connectionId);
 
             // Routes the message to the silo (server) where the client is actually connected.

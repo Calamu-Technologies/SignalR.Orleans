@@ -1,9 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Protocol;
-using Orleans.Runtime;
 using Orleans.Streams;
-using Orleans;
 
 namespace SignalR.Orleans;
 
@@ -153,12 +151,14 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
 
     public override Task SendAllAsync(string methodName, object?[] args, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug("SendAllAsync - MethodName: {methodName}", methodName);
         var message = new InvocationMessage(methodName, args);
         return _allStream.OnNextAsync(new AllMessage(message));
     }
 
     public override Task SendAllExceptAsync(string methodName, object?[] args, IReadOnlyList<string> excludedConnectionIds, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug("SendAllExceptAsync - MethodName: {methodName}, ExcludedConnectionIds: {excludedConnectionIds}", methodName, excludedConnectionIds);
         var message = new InvocationMessage(methodName, args);
         return _allStream.OnNextAsync(new AllMessage(message, excludedConnectionIds));
     }
@@ -253,7 +253,15 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
 
     private Task SendExternal(string connectionId, InvocationMessage hubMessage)
     {
-        if (_clusterClient is null) return Task.CompletedTask;
+        _logger.LogDebug(
+            "Send external message to connection {connectionId} on hub {hubName} (serverId: {serverId})",
+            connectionId, _hubName, _serverId);
+
+        if (_clusterClient is null)
+        {
+            _logger.LogError("Invalid clusterClient");
+            return Task.CompletedTask;
+        }
 
         var client = _clusterClient.GetClientGrain(_hubName, connectionId);
         return client.Send(hubMessage);
