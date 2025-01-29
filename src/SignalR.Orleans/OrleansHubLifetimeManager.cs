@@ -103,6 +103,17 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
     private Task ProcessServerMessage(ClientMessage clientMessage)
     {
         var connection = _connections[clientMessage.ConnectionId];
+        if (connection == null)
+        {
+            _logger.LogDebug("ProcessServerMessage - connection {connectionId} on hub {hubName} not connected to (serverId: {serverId})",
+                clientMessage.ConnectionId, _hubName, _serverId);
+        }
+        else
+        {
+            _logger.LogDebug("ProcessServerMessage - connection {connectionId} on hub {hubName} (serverId: {serverId})",
+                clientMessage.ConnectionId, _hubName, _serverId);
+        }
+
         return connection == null ? Task.CompletedTask : SendLocal(connection, clientMessage.Message);
     }
 
