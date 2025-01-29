@@ -22,6 +22,8 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
     private IStreamProvider? _streamProvider;
     private IAsyncStream<ClientMessage> _serverStream = default!;
     private IAsyncStream<AllMessage> _allStream = default!;
+    StreamSubscriptionHandle<AllMessage> _allStreamSubscription =  default!;
+    StreamSubscriptionHandle<ClientMessage> _serverStreamSubscription = default!;
     private Timer _timer = default!;
 
     public OrleansHubLifetimeManager(
@@ -68,10 +70,21 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
                 _ => Task.Run(HeartbeatCheck), null, TimeSpan.FromSeconds(0),
                 TimeSpan.FromMinutes(SignalROrleansConstants.SERVER_HEARTBEAT_PULSE_IN_MINUTES));
 
-            await Task.WhenAll(
+
+            _allStreamSubscription = await _allStream.SubscribeAsync((msg, _) => ProcessAllMessage(msg));
+            _logger.LogInformation(
+                "Orleans HubLifetimeManager {hubName} - ALLS_TREAM Subscription Handle {handleId} (serverId: {serverId})",
+                _hubName, _allStreamSubscription.HandleId.ToString(), _serverId);
+            
+            _serverStreamSubscription = await _serverStream.SubscribeAsync((msg, _) => ProcessServerMessage(msg));
+            _logger.LogInformation(
+                "Orleans HubLifetimeManager {hubName} - SERVER_STREAM Subscription Handle {handleId} (serverId: {serverId})",
+                _hubName, _serverStreamSubscription.HandleId.ToString(), _serverId);
+
+            /*await Task.WhenAll(
                 _allStream.SubscribeAsync((msg, _) => ProcessAllMessage(msg)),
                 _serverStream.SubscribeAsync((msg, _) => ProcessServerMessage(msg))
-            );
+            );*/
 
             _logger.LogInformation(
                 "Initialized complete: Orleans HubLifetimeManager {hubName} (serverId: {serverId})",
