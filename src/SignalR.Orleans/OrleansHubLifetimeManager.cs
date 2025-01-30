@@ -71,7 +71,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
                 TimeSpan.FromMinutes(SignalROrleansConstants.SERVER_HEARTBEAT_PULSE_IN_MINUTES));
 
 
-            _allStreamSubscription = await _allStream.SubscribeAsync((msg, _) => ProcessAllMessage(msg));
+            _allStreamSubscription = await _allStream.SubscribeAsync( (msg, _) => ProcessAllMessage(msg));
             _logger.LogInformation(
                 "Orleans HubLifetimeManager {hubName} - ALLS_TREAM Subscription Handle {handleId} (serverId: {serverId})",
                 _hubName, _allStreamSubscription.HandleId.ToString(), _serverId);

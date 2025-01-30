@@ -23,5 +23,5 @@ public static class SignalROrleansConstants
     /// The number of minutes that each signalR hub server must heartbeat the server directory grain.
     /// There's just one server directory grain (id 0) per cluster.
     /// </summary>
-    internal const int SERVER_HEARTBEAT_PULSE_IN_MINUTES = 30;
+    internal const int SERVER_HEARTBEAT_PULSE_IN_MINUTES = 1;
 }

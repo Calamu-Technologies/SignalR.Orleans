@@ -47,6 +47,10 @@ internal sealed class ServerDirectoryGrain : IGrainBase, IServerDirectoryGrain
     public async Task Heartbeat(Guid serverId)
     {
         _state.State.ServerHeartBeats[serverId] = DateTime.UtcNow;
+
+        _logger.LogInformation("Available servers {serverIds}",
+            string.Join(", ", _state.State.ServerHeartBeats?.Count > 0 ? string.Join(", ", _state.State.ServerHeartBeats) : "empty"));
+
         await _state.WriteStateAsync();
     }
 
