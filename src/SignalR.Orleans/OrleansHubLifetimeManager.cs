@@ -73,7 +73,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
 
             _allStreamSubscription = await _allStream.SubscribeAsync( (msg, _) => ProcessAllMessage(msg));
             _logger.LogInformation(
-                "Orleans HubLifetimeManager {hubName} - ALLS_TREAM Subscription Handle {handleId} (serverId: {serverId})",
+                "Orleans HubLifetimeManager {hubName} - ALL_STREAM Subscription Handle {handleId} (serverId: {serverId})",
                 _hubName, _allStreamSubscription.HandleId.ToString(), _serverId);
             
             _serverStreamSubscription = await _serverStream.SubscribeAsync((msg, _) => ProcessServerMessage(msg));
