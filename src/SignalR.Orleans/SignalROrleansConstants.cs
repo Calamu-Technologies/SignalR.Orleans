@@ -12,7 +12,8 @@ public static class SignalROrleansConstants
     /// <summary>
     /// Name of the state storage provider used by signalR orleans backplane grains.
     /// </summary>
-    public const string SIGNALR_ORLEANS_STORAGE_PROVIDER = nameof(SIGNALR_ORLEANS_STORAGE_PROVIDER);
+    //public const string SIGNALR_ORLEANS_STORAGE_PROVIDER = nameof(SIGNALR_ORLEANS_STORAGE_PROVIDER);
+    public const string SIGNALR_ORLEANS_STORAGE_PROVIDER = "Default";
 
     /// <summary>
     /// Name used to access the <see cref="IStreamProvider"/> that supplies signalR orleans backplane streams.
