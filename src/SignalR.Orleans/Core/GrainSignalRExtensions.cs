@@ -12,10 +12,10 @@ public static class GrainSignalRExtensions
     /// <param name="grain"></param>
     /// <param name="methodName">Target method name to invoke.</param>
     /// <param name="args">Arguments to pass to the target method.</param>
-    public static Task Send(this IHubMessageInvoker grain, string methodName, params object?[] args)
+    public static Task Send(this IHubMessageInvoker grain, Guid fromServerId, string methodName, params object?[] args)
     {
         var invocationMessage = new InvocationMessage(methodName, args);
-        return grain.Send(invocationMessage);
+        return grain.Send(fromServerId, invocationMessage);
     }
 
     /// <summary>
@@ -26,9 +26,9 @@ public static class GrainSignalRExtensions
     /// <param name="methodName">Target method name to invoke.</param>
     /// <param name="args">Arguments to pass to the target method.</param>
     /// <returns></returns>
-    public static Task SendOneWay(this IHubMessageInvoker grain, string methodName, params object?[] args)
+    public static Task SendOneWay(this IHubMessageInvoker grain, Guid fromServerId, string methodName, params object?[] args)
     {
-        grain.SendOneWay(methodName, args).Ignore();
+        grain.SendOneWay(fromServerId, methodName, args).Ignore();
 
         return Task.CompletedTask;
     }

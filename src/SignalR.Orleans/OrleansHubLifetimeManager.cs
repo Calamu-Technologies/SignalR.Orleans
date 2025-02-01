@@ -255,7 +255,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
         if (string.IsNullOrWhiteSpace(methodName)) throw new ArgumentNullException(nameof(methodName));
 
         var group = _clusterClient.GetGroupGrain(_hubName, groupName);
-        return group.Send(methodName, args);
+        return group.Send(_serverId, methodName, args);
     }
 
     public override Task SendGroupsAsync(IReadOnlyList<string> groupNames, string methodName, object?[] args, CancellationToken cancellationToken = default)
@@ -272,7 +272,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
         if (string.IsNullOrWhiteSpace(methodName)) throw new ArgumentNullException(nameof(methodName));
 
         var group = _clusterClient.GetGroupGrain(_hubName, groupName);
-        return group.SendExcept(methodName, args, excludedConnectionIds);
+        return group.SendExcept(_serverId, methodName, args, excludedConnectionIds);
     }
 
     public override Task SendUserAsync(string userId, string methodName, object?[] args, CancellationToken cancellationToken = default)
@@ -283,7 +283,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
         if (string.IsNullOrWhiteSpace(methodName)) throw new ArgumentNullException(nameof(methodName));
 
         var user = _clusterClient.GetUserGrain(_hubName, userId);
-        return user.Send(methodName, args);
+        return user.Send(_serverId, methodName, args);
     }
 
     public override Task SendUsersAsync(IReadOnlyList<string> userIds, string methodName, object?[] args, CancellationToken cancellationToken = default)
@@ -329,7 +329,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
         }
 
         var client = _clusterClient.GetClientGrain(_hubName, connectionId);
-        return client.Send(hubMessage);
+        return client.Send(_serverId, hubMessage);
     }
 
     public override async Task<T> InvokeConnectionAsync<T>(string connectionId, string methodName, object?[] args,
@@ -345,6 +345,9 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
         // Generate cluster-unique identifier for the invocation.
         // ID needs to be unique for each invocation and across servers, we generate a GUID every time, that should provide enough uniqueness guarantees.
         var invocationId = Guid.NewGuid().ToString();
+
+        _logger.LogDebug("InvokeConnectionAsync {connectionId} on hub {hubName} {methodName} invocation {invocationId} (serverId: {serverId})",
+                connectionId, _hubName, methodName, invocationId, _serverId);
 
         using var _ = CancellationTokenUtils.CreateLinkedToken(cancellationToken,
             connection?.ConnectionAborted ?? CancellationToken.None, out var linkedToken);
@@ -404,7 +407,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
             }
 
             var client = _clusterClient.GetClientGrain(_hubName, connectionId);
-            return client.SendResult(result);
+            return client.SendResult(_serverId, result);
         }
 
         return Task.CompletedTask;

@@ -10,9 +10,10 @@ public interface IHubGroupMessageInvoker : IHubMessageInvoker
     /// <summary>
     /// Invokes a method on the hub except the specified connection ids.
     /// </summary>
+    /// <param name="fromServerId">The server sending this message.</param>
     /// <param name="methodName">Target method name to invoke.</param>
     /// <param name="args">Arguments to pass to the target method.</param>
     /// <param name="excludedConnectionIds">Connection ids to exclude.</param>
     [ReadOnly] // Allows re-entrancy on this method
-    Task SendExcept(string methodName, object?[] args, IEnumerable<string> excludedConnectionIds);
+    Task SendExcept(Guid fromServerId, string methodName, object?[] args, IEnumerable<string> excludedConnectionIds);
 }

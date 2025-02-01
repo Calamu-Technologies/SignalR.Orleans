@@ -81,34 +81,34 @@ internal sealed class ConnectionGroupGrain : IConnectionGroupGrain, IGrainBase
       => Task.FromResult(_state.State.ConnectionIds.Count);
 
     // NB: Interface method is marked [ReadOnly] so this method will be re-entrant/interleaved.
-    public Task Send([Immutable] InvocationMessage message)
-      => SendAll(message, _state.State.ConnectionIds);
+    public Task Send(Guid fromServerId, [Immutable] InvocationMessage message)
+      => SendAll(fromServerId, message, _state.State.ConnectionIds);
 
-    public Task SendResult([Immutable] CompletionMessage message)
-      => SendAllResult(message, _state.State.ConnectionIds);
+    public Task SendResult(Guid fromServerId, [Immutable] CompletionMessage message)
+      => SendAllResult(fromServerId, message, _state.State.ConnectionIds);
 
     // NB: Interface method is marked [ReadOnly] so this method will be re-entrant/interleaved.
-    public Task SendExcept(string methodName, object?[] args, IEnumerable<string> excludedConnectionIds)
+    public Task SendExcept(Guid fromServerId, string methodName, object?[] args, IEnumerable<string> excludedConnectionIds)
     {
         var message = new InvocationMessage(methodName, args);
-        return SendAll(message, _state.State.ConnectionIds.Except(excludedConnectionIds));
+        return SendAll(fromServerId, message, _state.State.ConnectionIds.Except(excludedConnectionIds));
     }
 
-    private Task SendAll([Immutable] InvocationMessage message, IEnumerable<string> connectionIds)
+    private Task SendAll(Guid fromServerId, [Immutable] InvocationMessage message, IEnumerable<string> connectionIds)
     {
         _logger.LogDebug("Sending message to {HubName}.{MethodName} on {GroupType} group '{GroupId}'.",
             _key.HubType, message.Target, _key.GroupType, _key.GroupId);
 
-        return Task.WhenAll(connectionIds.Select(connectionId => _grainFactory.GetClientGrain(_key.HubType, connectionId).Send(message)));
+        return Task.WhenAll(connectionIds.Select(connectionId => _grainFactory.GetClientGrain(_key.HubType, connectionId).Send(fromServerId, message)));
     }
 
-    public Task SendAllResult([Immutable] CompletionMessage message, IEnumerable<string> connectionIds)
+    public Task SendAllResult(Guid fromServerId, [Immutable] CompletionMessage message, IEnumerable<string> connectionIds)
     {
         _logger.LogDebug("Sending result message to {HubName} invocation {invocationId} on {GroupType} group '{GroupId}'.",
             _key.HubType, message.InvocationId, _key.GroupType, _key.GroupId);
 
-        return Task.WhenAll(connectionIds.Select(connectionId => _grainFactory.GetClientGrain(_key.HubType, connectionId).SendResult(message)));
+        return Task.WhenAll(connectionIds.Select(connectionId => _grainFactory.GetClientGrain(_key.HubType, connectionId).SendResult(fromServerId, message)));
     }
 
-    public Task SendOneWay(InvocationMessage message) => Send(message);
+    public Task SendOneWay(Guid fromServerId, InvocationMessage message) => Send(fromServerId, message);
 }

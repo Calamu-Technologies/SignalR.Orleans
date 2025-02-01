@@ -89,7 +89,7 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
     }
 
     // NB: Interface method is marked [ReadOnly] so this method will be re-entrant/interleaved.
-    public async Task Send([Immutable] InvocationMessage message)
+    public async Task Send(Guid fromServerId, [Immutable] InvocationMessage message)
     {
         if (_serverId != default)
         {
@@ -97,7 +97,7 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
                 _hubName, message.Target, _connectionId);
 
             // Routes the message to the silo (server) where the client is actually connected.
-            await _streamProvider.GetServerStream(_serverId).OnNextAsync(new ClientMessage(_hubName, _connectionId, message));
+            await _streamProvider.GetServerStream(_serverId).OnNextAsync(new ClientMessage(_hubName, _connectionId, fromServerId, message));
 
             Interlocked.Exchange(ref _failAttempts, 0);
         }
@@ -116,7 +116,7 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
         }
     }
 
-    public async Task SendResult([Immutable] CompletionMessage message)
+    public async Task SendResult(Guid fromServerId, [Immutable] CompletionMessage message)
     {
         if (_serverId != default)
         {
@@ -124,7 +124,7 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
                 _hubName, message.InvocationId, _connectionId);
 
             // Routes the message to the silo (server) where the client is actually connected.
-            await _streamProvider.GetServerResultStream(_serverId).OnNextAsync(new ClientResultMessage(_hubName, _connectionId, message));
+            await _streamProvider.GetServerResultStream(_serverId).OnNextAsync(new ClientResultMessage(_hubName, _connectionId, fromServerId, message));
 
             Interlocked.Exchange(ref _failAttempts, 0);
         }
@@ -143,5 +143,5 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
         }
     }
 
-    public Task SendOneWay(InvocationMessage message) => Send(message);
+    public Task SendOneWay(Guid fromServerId, InvocationMessage message) => Send(fromServerId, message);
 }
