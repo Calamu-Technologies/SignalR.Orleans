@@ -12,7 +12,7 @@ namespace SignalR.Orleans.Clients;
 internal sealed class ClientGrain : IGrainBase, IClientGrain
 {
     private const string CLIENT_STORAGE = "ClientState";
-    private const int MAX_FAIL_ATTEMPTS = 3;
+    private const int MAX_FAIL_ATTEMPTS = 1;
 
     private readonly ILogger<ClientGrain> _logger;
     private readonly IPersistentState<ClientGrainState> _clientState;
@@ -64,7 +64,7 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
         var serverDisconnectedStream = _streamProvider.GetServerDisconnectionStream(serverId);
         _serverDisconnectedSubscription = await serverDisconnectedStream.SubscribeAsync(_ => OnDisconnect("server-disconnected"));
 
-        _logger.LogDebug("OnConnect {serverId}", serverId);
+        _logger.LogDebug("ClientGrain.OnConnect {serverId}", serverId);
 
         _clientState.State.ServerId = serverId;
         await _clientState.WriteStateAsync();
@@ -72,7 +72,7 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
 
     public async Task OnDisconnect(string? reason = null)
     {
-        _logger.LogDebug("Disconnecting connection on {hubName} for connection {connectionId} from server {serverId} via reason '{reason}'.",
+        _logger.LogDebug("ClientGrain Disconnecting connection on {hubName} for connection {connectionId} from server {serverId} via reason '{reason}'.",
             _hubName, _connectionId, _clientState.State.ServerId, reason);
 
         if (_serverDisconnectedSubscription is not null)
@@ -82,6 +82,8 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
         }
 
         await _streamProvider.GetClientDisconnectionStream(_connectionId).OnNextAsync(_connectionId);
+
+        _clientState.State.ServerId = default;
 
         await _clientState.ClearStateAsync();
 
@@ -93,8 +95,8 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
     {
         if (_serverId != default)
         {
-            _logger.LogDebug("Sending message on stream to {hubName}.{target} to connection {connectionId}",
-                _hubName, message.Target, _connectionId);
+            _logger.LogDebug("ClientGrain Sending message on stream to {hubName}.{target} to connection {connectionId} server {serverId} fromServer {fromServerId}",
+                _hubName, message.Target, _connectionId, _serverId, fromServerId);
 
             // Routes the message to the silo (server) where the client is actually connected.
             await _streamProvider.GetServerStream(_serverId).OnNextAsync(new ClientMessage(_hubName, _connectionId, fromServerId, message));
