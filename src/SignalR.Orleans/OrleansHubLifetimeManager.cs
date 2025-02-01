@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.SignalR.Protocol;
 using Orleans.Streams;
 using SignalR.Orleans.Core;
 using Orleans;
+using System.Reflection;
+using System.Threading;
 
 namespace SignalR.Orleans;
 
@@ -129,6 +131,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
         {
             _logger.LogDebug("ProcessServerMessage - connection {connectionId} on hub {hubName} not connected to (serverId: {serverId})",
                 clientMessage.ConnectionId, _hubName, _serverId);
+            return Task.CompletedTask;
         }
         else
         {
@@ -136,7 +139,20 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
                 clientMessage.ConnectionId, _hubName, _serverId);
         }
 
-        return connection == null ? Task.CompletedTask : SendLocal(connection, clientMessage.Message);
+        using var _ = CancellationTokenUtils.CreateLinkedToken(CancellationToken.None,
+            connection?.ConnectionAborted ?? CancellationToken.None, out var linkedToken);
+        var task = _clientResultsManager.AddInvocation<THub>(clientMessage.ConnectionId, clientMessage.fromServerId, clientMessage.Message.InvocationId!, linkedToken);
+
+        try
+        {
+            var message = new InvocationMessage(clientMessage.Message.InvocationId!, clientMessage.Message.Target, clientMessage.Message.Arguments);
+            return SendLocal(connection!, message);
+        }
+        catch
+        {
+            _clientResultsManager.RemoveInvocation(clientMessage.Message.InvocationId!);
+            return Task.CompletedTask;
+        }
     }
 
     private Task ProcessServerResultMessage(ClientResultMessage clientResultMessage)
@@ -313,6 +329,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
         _logger.LogDebug(
             "Sending local message to connection {connectionId} on hub {hubName} (serverId: {serverId})",
             connection.ConnectionId, _hubName, _serverId);
+
         return connection.WriteAsync(hubMessage).AsTask();
     }
 
