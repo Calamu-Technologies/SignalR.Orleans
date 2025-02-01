@@ -17,7 +17,8 @@ public static class SignalROrleansConstants
     /// <summary>
     /// Name used to access the <see cref="IStreamProvider"/> that supplies signalR orleans backplane streams.
     /// </summary>
-    public const string SIGNALR_ORLEANS_STREAM_PROVIDER = nameof(SIGNALR_ORLEANS_STREAM_PROVIDER);
+    //public const string SIGNALR_ORLEANS_STREAM_PROVIDER = nameof(SIGNALR_ORLEANS_STREAM_PROVIDER);
+    public const string SIGNALR_ORLEANS_STREAM_PROVIDER = "Streams";
 
     /// <summary>
     /// The number of minutes that each signalR hub server must heartbeat the server directory grain.

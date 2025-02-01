@@ -7,6 +7,8 @@ using SignalR.Orleans.Core;
 using Orleans;
 using System.Reflection;
 using System.Threading;
+using Microsoft.Extensions.DependencyInjection;
+using Orleans.Streams.Core;
 
 namespace SignalR.Orleans;
 
@@ -21,6 +23,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
     private readonly SemaphoreSlim _streamSetupLock = new(1);
     private readonly HubConnectionStore _connections = new();
     private readonly ClientResultsManager _clientResultsManager = new();
+    private readonly IServiceProvider _serviceProvider;
 
     private IStreamProvider? _streamProvider = null;
     private IAsyncStream<ClientMessage> _serverStream = default!;
@@ -32,6 +35,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
     private Timer _timer = default!;
 
     public OrleansHubLifetimeManager(
+        IServiceProvider serviceProvider,
         ILogger<OrleansHubLifetimeManager<THub>> logger,
         IClusterClient clusterClient
     )
@@ -43,6 +47,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
         _serverId = Guid.NewGuid();
         _logger = logger;
         _clusterClient = clusterClient;
+        _serviceProvider = serviceProvider;
     }
 
     private Task HeartbeatCheck()
@@ -91,10 +96,15 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
                 "Orleans HubLifetimeManager {hubName} - SERVER_RESULT_STREAM Subscription Handle {handleId} (serverId: {serverId})",
                 _hubName, _serverStreamSubscription.HandleId.ToString(), _serverId);
 
-            /*await Task.WhenAll(
-                _allStream.SubscribeAsync((msg, _) => ProcessAllMessage(msg)),
-                _serverStream.SubscribeAsync((msg, _) => ProcessServerMessage(msg))
-            );*/
+
+            var subManager = _serviceProvider.GetService<IStreamSubscriptionManagerAdmin>()!
+                            .GetStreamSubscriptionManager(StreamSubscriptionManagerType.ExplicitSubscribeOnly);
+            if (subManager is not null)
+            {
+                var subscriptions = await subManager.GetSubscriptions(SignalROrleansConstants.SIGNALR_ORLEANS_STREAM_PROVIDER, StreamId.Create("SERVER_STREAM", _serverId));
+                foreach (var sub in subscriptions)
+                    _logger.LogInformation("subscriptions seen by server {serverId} - {sub}", _serverId, sub.ToString());
+            }
 
             _logger.LogInformation(
                 "Initialized complete: Orleans HubLifetimeManager {hubName} (serverId: {serverId})",
