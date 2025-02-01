@@ -64,7 +64,7 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
         var serverDisconnectedStream = _streamProvider.GetServerDisconnectionStream(serverId);
         _serverDisconnectedSubscription = await serverDisconnectedStream.SubscribeAsync(_ => OnDisconnect("server-disconnected"));
 
-        _logger.LogDebug("ClientGrain.OnConnect {serverId}", serverId);
+        _logger.LogDebug("ClientGrain.OnConnect - ConnectionId {connectionId} on Server {serverId}", _connectionId, serverId);
 
         _clientState.State.ServerId = serverId;
         await _clientState.WriteStateAsync();
