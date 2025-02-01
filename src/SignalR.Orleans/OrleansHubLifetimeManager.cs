@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Protocol;
 using Orleans.Streams;
 using SignalR.Orleans.Core;
+using Orleans;
 
 namespace SignalR.Orleans;
 
@@ -21,9 +22,11 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
 
     private IStreamProvider? _streamProvider;
     private IAsyncStream<ClientMessage> _serverStream = default!;
+    private IAsyncStream<ClientResultMessage> _serverResultStream = default!;
     private IAsyncStream<AllMessage> _allStream = default!;
     StreamSubscriptionHandle<AllMessage> _allStreamSubscription =  default!;
     StreamSubscriptionHandle<ClientMessage> _serverStreamSubscription = default!;
+    StreamSubscriptionHandle<ClientResultMessage> _serverResultStreamSubscription = default!;
     private Timer _timer = default!;
 
     public OrleansHubLifetimeManager(
@@ -64,6 +67,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
 
             _streamProvider = _clusterClient!.GetOrleansSignalRStreamProvider();
             _serverStream = _streamProvider.GetServerStream(_serverId);
+            _serverResultStream = _streamProvider.GetServerResultStream(_serverId);
             _allStream = _streamProvider.GetAllStream(_hubName);
 
             _timer = new Timer(
@@ -79,6 +83,11 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
             _serverStreamSubscription = await _serverStream.SubscribeAsync((msg, _) => ProcessServerMessage(msg));
             _logger.LogInformation(
                 "Orleans HubLifetimeManager {hubName} - SERVER_STREAM Subscription Handle {handleId} (serverId: {serverId})",
+                _hubName, _serverStreamSubscription.HandleId.ToString(), _serverId);
+
+            _serverResultStreamSubscription = await _serverResultStream.SubscribeAsync((msg, _) => ProcessServerResultMessage(msg));
+            _logger.LogInformation(
+                "Orleans HubLifetimeManager {hubName} - SERVER_RESULT_STREAM Subscription Handle {handleId} (serverId: {serverId})",
                 _hubName, _serverStreamSubscription.HandleId.ToString(), _serverId);
 
             /*await Task.WhenAll(
@@ -128,6 +137,23 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
         }
 
         return connection == null ? Task.CompletedTask : SendLocal(connection, clientMessage.Message);
+    }
+
+    private Task ProcessServerResultMessage(ClientResultMessage clientResultMessage)
+    {
+        var connection = _connections[clientResultMessage.ConnectionId];
+        if (connection == null)
+        {
+            _logger.LogDebug("ProcessServerResultMessage - connection {connectionId} on hub {hubName} not connected to (serverId: {serverId})",
+                clientResultMessage.ConnectionId, _hubName, _serverId);
+        }
+        else
+        {
+            _logger.LogDebug("ProcessServerResultMessage - connection {connectionId} on hub {hubName} (serverId: {serverId})",
+                clientResultMessage.ConnectionId, _hubName, _serverId);
+        }
+
+        return connection == null ? Task.CompletedTask : SetConnectionResultAsync(clientResultMessage.ConnectionId, clientResultMessage.Message);
     }
 
     public override async Task OnConnectedAsync(HubConnectionContext connection)
@@ -322,7 +348,7 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
 
         using var _ = CancellationTokenUtils.CreateLinkedToken(cancellationToken,
             connection?.ConnectionAborted ?? CancellationToken.None, out var linkedToken);
-        var task = _clientResultsManager.AddInvocation<T>(connectionId, invocationId, linkedToken);
+        var task = _clientResultsManager.AddInvocation<T>(connectionId, _serverId, invocationId, linkedToken);
 
         try
         {
@@ -360,7 +386,27 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
 
     public override Task SetConnectionResultAsync(string connectionId, CompletionMessage result)
     {
-        _clientResultsManager.TryCompleteResult(connectionId, result);
+        // We have to complete the local invocation first
+        var fromServerId = _clientResultsManager.TryCompleteResult(connectionId, result);
+
+        // If not empty and doesn't equal this server's id, send the results to the original server to
+        // complete that invocation also.
+        if (fromServerId != Guid.Empty && fromServerId != _serverId)
+        {
+            _logger.LogDebug(
+                "Send external result message to connection {connectionId} on hub {hubName} (serverId: {serverId})",
+                connectionId, _hubName, _serverId);
+
+            if (_clusterClient is null)
+            {
+                _logger.LogError("Invalid clusterClient");
+                return Task.CompletedTask;
+            }
+
+            var client = _clusterClient.GetClientGrain(_hubName, connectionId);
+            return client.SendResult(result);
+        }
+
         return Task.CompletedTask;
     }
 

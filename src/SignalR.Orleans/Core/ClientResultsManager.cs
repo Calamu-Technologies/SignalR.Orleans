@@ -3,6 +3,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
  
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -15,12 +16,12 @@ namespace SignalR.Orleans.Core;
 // Handles cancellation, cleanup, and completion, so any bugs or improvements can be made in a single place
 internal sealed class ClientResultsManager : IInvocationBinder
 {
-    private readonly ConcurrentDictionary<string, (Type Type, string ConnectionId, object Tcs, Action<object, CompletionMessage> Complete)> _pendingInvocations = new();
+    private readonly ConcurrentDictionary<string, (Type Type, string ConnectionId, Guid fromServerId, object Tcs, Action<object, CompletionMessage> Complete)> _pendingInvocations = new();
  
-    public Task<T> AddInvocation<T>(string connectionId, string invocationId, CancellationToken cancellationToken)
+    public Task<T> AddInvocation<T>(string connectionId, Guid fromServerId, string invocationId, CancellationToken cancellationToken)
     {
-        var tcs = new TaskCompletionSourceWithCancellation<T>(this, connectionId, invocationId, cancellationToken);
-        var result = _pendingInvocations.TryAdd(invocationId, (typeof(T), connectionId, tcs, static (state, completionMessage) =>
+        var tcs = new TaskCompletionSourceWithCancellation<T>(this, connectionId, fromServerId, invocationId, cancellationToken);
+        var result = _pendingInvocations.TryAdd(invocationId, (typeof(T), connectionId, fromServerId, tcs, static (state, completionMessage) =>
         {
             var tcs = (TaskCompletionSourceWithCancellation<T>)state;
             if (completionMessage.HasResult)
@@ -40,7 +41,7 @@ internal sealed class ClientResultsManager : IInvocationBinder
         return tcs.Task;
     }
  
-    public void AddInvocation(string invocationId, (Type Type, string ConnectionId, object Tcs, Action<object, CompletionMessage> Complete) invocationInfo)
+    public void AddInvocation(string invocationId, (Type Type, string ConnectionId, Guid fromServerId, object Tcs, Action<object, CompletionMessage> Complete) invocationInfo)
     {
         var result = _pendingInvocations.TryAdd(invocationId, invocationInfo);
         Debug.Assert(result);
@@ -50,8 +51,15 @@ internal sealed class ClientResultsManager : IInvocationBinder
             invocationInfo.Complete(invocationInfo.Tcs, CompletionMessage.WithError(invocationId, "ID collision occurred when using client results. This is likely a bug in SignalR."));
         }
     }
- 
-    public void TryCompleteResult(string connectionId, CompletionMessage message)
+
+    /// <summary>
+    /// Sends the results back to the caller.
+    /// </summary>
+    /// <param name="connectionId">The connection to send the result to.</param>
+    /// <param name="message">The results message to send.</param>
+    /// <returns>Returns a Guid of the server that originally received the message, or Guid.Empty if the Invocation has already completed.</returns>
+    /// <exception cref="InvalidOperationException"></exception>
+    public Guid TryCompleteResult(string connectionId, CompletionMessage message)
     {
         if (_pendingInvocations.TryGetValue(message.InvocationId!, out var item))
         {
@@ -66,15 +74,18 @@ internal sealed class ClientResultsManager : IInvocationBinder
             if (_pendingInvocations.Remove(message.InvocationId!, out _))
             {
                 item.Complete(item.Tcs, message);
+                return item.fromServerId;
             }
         }
         else
         {
             // connection was disconnected or someone else completed the invocation
         }
+
+        return Guid.Empty;
     }
  
-    public (Type Type, string ConnectionId, object Tcs, Action<object, CompletionMessage> Completion)? RemoveInvocation(string invocationId)
+    public (Type Type, string ConnectionId, Guid fromServerId, object Tcs, Action<object, CompletionMessage> Completion)? RemoveInvocation(string invocationId)
     {
         _pendingInvocations.TryRemove(invocationId, out var item);
         return item;
@@ -118,17 +129,19 @@ internal sealed class ClientResultsManager : IInvocationBinder
     {
         private readonly ClientResultsManager _clientResultsManager;
         private readonly string _connectionId;
+        private readonly Guid _fromServerId;
         private readonly string _invocationId;
         private readonly CancellationToken _token;
  
         private CancellationTokenRegistration _tokenRegistration;
  
-        public TaskCompletionSourceWithCancellation(ClientResultsManager clientResultsManager, string connectionId, string invocationId,
+        public TaskCompletionSourceWithCancellation(ClientResultsManager clientResultsManager, string connectionId, Guid fromServerId, string invocationId,
             CancellationToken cancellationToken)
             : base(TaskCreationOptions.RunContinuationsAsynchronously)
         {
             _clientResultsManager = clientResultsManager;
             _connectionId = connectionId;
+            _fromServerId = fromServerId;
             _invocationId = invocationId;
             _token = cancellationToken;
         }

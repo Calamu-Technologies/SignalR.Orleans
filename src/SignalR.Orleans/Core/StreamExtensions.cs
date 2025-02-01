@@ -34,6 +34,13 @@ public static class StreamExtensions
         => streamProvider.GetStream<ClientMessage>(StreamId.Create("SERVER_STREAM", serverId));
 
     /// <summary>
+    /// Gets a stream that you can use to write result messages that need to be sent to the connection that is connected at that server.
+    /// </summary>
+    /// <param name="serverId">The id of the server that the message destination connection is connected at.</param>
+    public static IAsyncStream<ClientResultMessage> GetServerResultStream(this IStreamProvider streamProvider, Guid serverId)
+        => streamProvider.GetStream<ClientResultMessage>(StreamId.Create("SERVER_RESULT_STREAM", serverId));
+
+    /// <summary>
     /// Gets a stream that you can listen on to receive a message when the connection with the given <paramref name="connectionId"/> has been disconnected.
     /// </summary>
     /// <param name="connectionId">The id of the connection that we are listening for.</param>

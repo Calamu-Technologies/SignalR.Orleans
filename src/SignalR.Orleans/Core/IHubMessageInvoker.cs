@@ -16,6 +16,13 @@ public interface IHubMessageInvoker : IAddressable
     [ReadOnly] // Allows re-entrancy on this method
     Task Send(InvocationMessage message);
 
+    /// <summary>
+    /// Send invocation results to the hub.
+    /// </summary>
+    /// <param name="message">Message Result to send.</param>
+    [ReadOnly] // Allows re-entrancy on this method
+    Task SendResult(CompletionMessage message);
+
     [OneWay]
     Task SendOneWay(InvocationMessage message);
 }

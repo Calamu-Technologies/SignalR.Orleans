@@ -4,6 +4,7 @@ using Orleans.Runtime;
 using Orleans.Streams;
 using Microsoft.Extensions.Options;
 using SignalR.Orleans.Core;
+using Orleans;
 
 namespace SignalR.Orleans.ConnectionGroups;
 
@@ -83,6 +84,9 @@ internal sealed class ConnectionGroupGrain : IConnectionGroupGrain, IGrainBase
     public Task Send([Immutable] InvocationMessage message)
       => SendAll(message, _state.State.ConnectionIds);
 
+    public Task SendResult([Immutable] CompletionMessage message)
+      => SendAllResult(message, _state.State.ConnectionIds);
+
     // NB: Interface method is marked [ReadOnly] so this method will be re-entrant/interleaved.
     public Task SendExcept(string methodName, object?[] args, IEnumerable<string> excludedConnectionIds)
     {
@@ -96,6 +100,14 @@ internal sealed class ConnectionGroupGrain : IConnectionGroupGrain, IGrainBase
             _key.HubType, message.Target, _key.GroupType, _key.GroupId);
 
         return Task.WhenAll(connectionIds.Select(connectionId => _grainFactory.GetClientGrain(_key.HubType, connectionId).Send(message)));
+    }
+
+    public Task SendAllResult([Immutable] CompletionMessage message, IEnumerable<string> connectionIds)
+    {
+        _logger.LogDebug("Sending result message to {HubName} invocation {invocationId} on {GroupType} group '{GroupId}'.",
+            _key.HubType, message.InvocationId, _key.GroupType, _key.GroupId);
+
+        return Task.WhenAll(connectionIds.Select(connectionId => _grainFactory.GetClientGrain(_key.HubType, connectionId).SendResult(message)));
     }
 
     public Task SendOneWay(InvocationMessage message) => Send(message);

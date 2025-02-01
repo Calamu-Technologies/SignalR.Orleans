@@ -116,5 +116,32 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
         }
     }
 
+    public async Task SendResult([Immutable] CompletionMessage message)
+    {
+        if (_serverId != default)
+        {
+            _logger.LogDebug("Sending results message on stream to {hubName} invocation {invocationId} to connection {connectionId}",
+                _hubName, message.InvocationId, _connectionId);
+
+            // Routes the message to the silo (server) where the client is actually connected.
+            await _streamProvider.GetServerResultStream(_serverId).OnNextAsync(new ClientResultMessage(_hubName, _connectionId, message));
+
+            Interlocked.Exchange(ref _failAttempts, 0);
+        }
+        else
+        {
+            _logger.LogInformation("Client not connected for connectionId '{connectionId}' and hub '{hubName}' ({invocationId})",
+                _connectionId, _hubName, message.InvocationId);
+
+            if (Interlocked.Increment(ref _failAttempts) >= MAX_FAIL_ATTEMPTS)
+            {
+                _logger.LogWarning("Force disconnect client for connectionId {connectionId} and hub {hubName} ({invocationId}) after exceeding attempts limit",
+                    _connectionId, _hubName, message.InvocationId);
+
+                await OnDisconnect("attempts-limit-reached");
+            }
+        }
+    }
+
     public Task SendOneWay(InvocationMessage message) => Send(message);
 }
