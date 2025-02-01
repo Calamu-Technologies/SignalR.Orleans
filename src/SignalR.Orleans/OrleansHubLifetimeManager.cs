@@ -409,6 +409,10 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
         // We have to complete the local invocation first
         var fromServerId = _clientResultsManager.TryCompleteResult(connectionId, result);
 
+        _logger.LogDebug(
+                "SetConnectionResultAsync for connection {connectionId} on hub {hubName} (serverId: {serverId}) from {fromServerId} result: {result}",
+                connectionId, _hubName, _serverId, fromServerId, result.ToString());
+
         // If not empty and doesn't equal this server's id, send the results to the original server to
         // complete that invocation also.
         if (fromServerId != Guid.Empty && fromServerId != _serverId)
