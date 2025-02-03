@@ -25,6 +25,7 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
 
     private IStreamProvider _streamProvider = default!;
     private StreamSubscriptionHandle<Guid>? _serverDisconnectedSubscription = default;
+    IAsyncStream<ClientMessage> _serverStream = default!;
 
     private int _failAttempts = 0;
 
@@ -61,12 +62,15 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
 
     public async Task OnConnect(Guid serverId)
     {
+        _clientState.State.ServerId = serverId;
+
         var serverDisconnectedStream = _streamProvider.GetServerDisconnectionStream(serverId);
         _serverDisconnectedSubscription = await serverDisconnectedStream.SubscribeAsync(_ => OnDisconnect("server-disconnected"));
 
+        _serverStream = _streamProvider.GetServerStream(_serverId);
+
         _logger.LogDebug("ClientGrain.OnConnect - ConnectionId {connectionId} on Server {serverId}", _connectionId, serverId);
 
-        _clientState.State.ServerId = serverId;
         await _clientState.WriteStateAsync();
     }
 
@@ -93,13 +97,13 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
     // NB: Interface method is marked [ReadOnly] so this method will be re-entrant/interleaved.
     public async Task Send(Guid fromServerId, [Immutable] InvocationMessage message)
     {
-        if (_serverId != default)
+        if (_serverId != default && _serverStream != default)
         {
             _logger.LogDebug("ClientGrain Sending message on stream to {hubName}.{target} to connection {connectionId} server {serverId} fromServer {fromServerId}",
                 _hubName, message.Target, _connectionId, _serverId, fromServerId);
 
             // Routes the message to the silo (server) where the client is actually connected.
-            await _streamProvider.GetServerStream(_serverId).OnNextAsync(new ClientMessage(_hubName, _connectionId, fromServerId, message));
+            await _serverStream.OnNextAsync(new ClientMessage(_hubName, _connectionId, fromServerId, message));
 
             Interlocked.Exchange(ref _failAttempts, 0);
         }
