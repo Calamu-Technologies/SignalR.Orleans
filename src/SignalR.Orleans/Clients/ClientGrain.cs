@@ -5,6 +5,8 @@ using Orleans.Runtime;
 using Orleans.Streams;
 using Orleans.Concurrency;
 using SignalR.Orleans.Core;
+using Orleans.Streams.Core;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace SignalR.Orleans.Clients;
 
@@ -27,10 +29,12 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
     private StreamSubscriptionHandle<Guid>? _serverDisconnectedSubscription = default;
     IAsyncStream<ClientMessage> _serverStream = default!;
     IAsyncStream<ClientResultMessage> _serverResultStream = default!;
+    private readonly IServiceProvider _serviceProvider;
 
     private int _failAttempts = 0;
 
     public ClientGrain(
+        IServiceProvider serviceProvider,
         ILogger<ClientGrain> logger,
         IGrainContext grainContext,
         [PersistentState(CLIENT_STORAGE, SignalROrleansConstants.SIGNALR_ORLEANS_STORAGE_PROVIDER)] IPersistentState<ClientGrainState> clientState, IOptions<InternalOptions> options)
@@ -38,6 +42,7 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
         _logger = logger;
         _clientState = options.Value.ConflateStorageAccess ? clientState.WithConflation() : clientState;
         this.GrainContext = grainContext;
+        _serviceProvider = serviceProvider;
     }
 
     public async Task OnActivateAsync(CancellationToken cancellationToken)
@@ -100,6 +105,18 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
     // NB: Interface method is marked [ReadOnly] so this method will be re-entrant/interleaved.
     public async Task Send(Guid fromServerId, [Immutable] InvocationMessage message)
     {
+        var subManager = _serviceProvider.GetService<IStreamSubscriptionManagerAdmin>()!
+                            .GetStreamSubscriptionManager(StreamSubscriptionManagerType.ExplicitSubscribeOnly);
+        if (subManager is not null)
+        {
+            var subscriptions = await subManager.GetSubscriptions(SignalROrleansConstants.SIGNALR_ORLEANS_STREAM_PROVIDER, StreamId.Create("SERVER_STREAM", _serverId));
+            foreach (var sub in subscriptions)
+            {
+                _logger.LogInformation("Subscriptions seen by server {serverId}, {grainId}, {providerName}, {streamId}, {subscriptionId}",
+                    _clientState.State.ServerId, sub.GrainId, sub.StreamProviderName, sub.StreamId, sub.SubscriptionId);
+            }
+        }
+
         if (_serverStream != default)
         {
             _logger.LogDebug("ClientGrain Sending message on stream to {hubName}.{target} to connection {connectionId} server {serverId} fromServer {fromServerId}",

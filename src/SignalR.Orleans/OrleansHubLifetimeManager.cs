@@ -4,9 +4,6 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Protocol;
 using Orleans.Streams;
 using SignalR.Orleans.Core;
-using Orleans;
-using System.Reflection;
-using System.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Orleans.Streams.Core;
 
@@ -103,7 +100,10 @@ public partial class OrleansHubLifetimeManager<THub> : HubLifetimeManager<THub>,
             {
                 var subscriptions = await subManager.GetSubscriptions(SignalROrleansConstants.SIGNALR_ORLEANS_STREAM_PROVIDER, StreamId.Create("SERVER_STREAM", _serverId));
                 foreach (var sub in subscriptions)
-                    _logger.LogInformation("subscriptions seen by server {serverId} - {sub}", _serverId, sub.ToString());
+                {
+                    _logger.LogInformation("Subscriptions seen by server {serverId}, {grainId}, {providerName}, {streamId}, {subscriptionId}",
+                        _serverId, sub.GrainId, sub.StreamProviderName, sub.StreamId, sub.SubscriptionId);
+                }
             }
 
             _logger.LogInformation(
