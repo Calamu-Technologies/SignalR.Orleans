@@ -26,6 +26,7 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
     private IStreamProvider _streamProvider = default!;
     private StreamSubscriptionHandle<Guid>? _serverDisconnectedSubscription = default;
     IAsyncStream<ClientMessage> _serverStream = default!;
+    IAsyncStream<ClientResultMessage> _serverResultStream = default!;
 
     private int _failAttempts = 0;
 
@@ -44,7 +45,6 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
         var key = ClientKey.FromGrainPrimaryKey(this.GetPrimaryKeyString());
         _hubName = key.HubType;
         _connectionId = key.ConnectionId;
-
         _streamProvider = this.GetOrleansSignalRStreamProvider();
 
         // Resume subscriptions if we have already been "connected".
@@ -56,19 +56,22 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
             var _serverDisconnectedSubscription = (await serverDisconnectedStream.GetAllSubscriptionHandles())[0];
             await _serverDisconnectedSubscription.ResumeAsync((serverId, _) => OnDisconnect("server-disconnected"));
 
+            _serverStream = _streamProvider.GetServerStream(_clientState.State.ServerId);
+            _serverResultStream = _streamProvider.GetServerResultStream(_clientState.State.ServerId);
+
             _logger.LogDebug("ResumeAsync {serverId}", _clientState.State.ServerId);
         }
     }
 
     public async Task OnConnect(Guid serverId)
     {
-        _clientState.State.ServerId = serverId;
-
         var serverDisconnectedStream = _streamProvider.GetServerDisconnectionStream(serverId);
         _serverDisconnectedSubscription = await serverDisconnectedStream.SubscribeAsync(_ => OnDisconnect("server-disconnected"));
 
-        _serverStream = _streamProvider.GetServerStream(_serverId);
+        _serverStream = _streamProvider.GetServerStream(serverId);
+        _serverResultStream = _streamProvider.GetServerResultStream(serverId);
 
+        _clientState.State.ServerId = serverId;
         _logger.LogDebug("ClientGrain.OnConnect - ConnectionId {connectionId} on Server {serverId}", _connectionId, serverId);
 
         await _clientState.WriteStateAsync();
@@ -97,10 +100,10 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
     // NB: Interface method is marked [ReadOnly] so this method will be re-entrant/interleaved.
     public async Task Send(Guid fromServerId, [Immutable] InvocationMessage message)
     {
-        if (_serverId != default && _serverStream != default)
+        if (_serverStream != default)
         {
             _logger.LogDebug("ClientGrain Sending message on stream to {hubName}.{target} to connection {connectionId} server {serverId} fromServer {fromServerId}",
-                _hubName, message.Target, _connectionId, _serverId, fromServerId);
+                _hubName, message.Target, _connectionId, _clientState.State.ServerId, fromServerId);
 
             // Routes the message to the silo (server) where the client is actually connected.
             await _serverStream.OnNextAsync(new ClientMessage(_hubName, _connectionId, fromServerId, message));
@@ -124,13 +127,13 @@ internal sealed class ClientGrain : IGrainBase, IClientGrain
 
     public async Task SendResult(Guid fromServerId, [Immutable] CompletionMessage message)
     {
-        if (_serverId != default)
+        if (_serverResultStream != default)
         {
             _logger.LogDebug("Sending results message on stream to {hubName} invocation {invocationId} to connection {connectionId}",
                 _hubName, message.InvocationId, _connectionId);
 
             // Routes the message to the silo (server) where the client is actually connected.
-            await _streamProvider.GetServerResultStream(_serverId).OnNextAsync(new ClientResultMessage(_hubName, _connectionId, fromServerId, message));
+            await _serverResultStream.OnNextAsync(new ClientResultMessage(_hubName, _connectionId, fromServerId, message));
 
             Interlocked.Exchange(ref _failAttempts, 0);
         }
